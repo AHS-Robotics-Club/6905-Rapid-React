@@ -1,55 +1,67 @@
 package frc.robot.subsystems;
 
-import com.revrobotics.CANSparkMax;
-import com.revrobotics.CANSparkMaxLowLevel.MotorType;
-
-import edu.wpi.first.math.controller.PIDController;
-import edu.wpi.first.math.controller.SimpleMotorFeedforward;
-import edu.wpi.first.wpilibj.Encoder;
-import edu.wpi.first.wpilibj2.command.PIDSubsystem;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.ShooterConstants;
 
-public class ShooterSubsystem extends PIDSubsystem {
+import com.revrobotics.CANSparkMax;
+import com.revrobotics.RelativeEncoder;
+import com.revrobotics.SparkMaxPIDController;
+import com.revrobotics.CANSparkMax.IdleMode;
+import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
-    private final CANSparkMax shooter1 = new CANSparkMax(ShooterConstants.kShooter1Port, MotorType.kBrushless);
-    private final CANSparkMax shooter2 = new CANSparkMax(ShooterConstants.kShooter2Port, MotorType.kBrushless);
+public class ShooterSubsystem extends SubsystemBase {
 
-    private final CANSparkMax transport = new CANSparkMax(ShooterConstants.kTransportMotor, MotorType.kBrushless);
+    private final CANSparkMax primary = new CANSparkMax(ShooterConstants.kShooter1, MotorType.kBrushless);
+    private final CANSparkMax follower = new CANSparkMax(ShooterConstants.kShooter2, MotorType.kBrushless);
 
+    private final RelativeEncoder encoder = primary.getEncoder();
 
-    private final Encoder encoder = new Encoder(
-            ShooterConstants.kEncoder1Port,
-            ShooterConstants.kEncoder2Port,
-            false);
+    private final SparkMaxPIDController pidfController = primary.getPIDController();
 
-    private final SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(ShooterConstants.kS,
-            ShooterConstants.kV);
+    private double rpm;
 
-    public ShooterSubsystem(PIDController controller) {
-        super(controller);
+    public ShooterSubsystem() {
+        rpm = 0;
+
+        primary.setIdleMode(IdleMode.kCoast);
+        follower.setIdleMode(IdleMode.kCoast);
+
+        follower.follow(primary, true);
+
+        pidfController.setP(ShooterConstants.kP);
+        pidfController.setI(ShooterConstants.kI);
+        pidfController.setD(ShooterConstants.kD);
+        pidfController.setFF(ShooterConstants.kF);
+
+        pidfController.setOutputRange(ShooterConstants.kMin, ShooterConstants.kMax);
     }
 
+    public boolean atSetpoint() {
+        return encoder.getVelocity() >= rpm - 50 && encoder.getVelocity() <= rpm + 50;
+    }
+
+    public double getVelocity() {
+        return encoder.getVelocity();
+    }
+
+    public void setRPM(double targetRPM) {
+        rpm = targetRPM;
+    }
+
+    public void setMax() {
+        rpm = 5600;
+        primary.set(0.6);
+    }
+
+    public void stopShooter() {
+        rpm = 0;
+        primary.stopMotor();
+    }
+
+    // 5676
     @Override
-    protected void useOutput(double output, double setpoint) {
-        shooter1.setVoltage(output + feedforward.calculate(setpoint));
-        shooter2.setVoltage(output + feedforward.calculate(setpoint));
-    }
-
-    @Override
-    protected double getMeasurement() {
-        return encoder.getRate();
-    }
-
-    public void up() {
-        transport.set(0.8);
-    }
-
-    public void down() {
-        transport.set(-0.5);
-    }
-
-    public void stopTransport() {
-        transport.stopMotor();
+    public void periodic() {
+        // pidfController.setReference(rpm, ControlType.kVelocity);
     }
 
 }

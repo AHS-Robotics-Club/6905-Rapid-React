@@ -4,54 +4,46 @@
 
 package frc.robot;
 
-import java.util.function.DoubleSupplier;
-
-import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.XboxController;
-import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
 import edu.wpi.first.wpilibj.XboxController.Button;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.RunCommand;
 import edu.wpi.first.wpilibj2.command.StartEndCommand;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.POVButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import frc.robot.Constants.OIConstants;
-import frc.robot.Constants.ShooterConstants;
+import frc.robot.commands.AutoCommandTest;
 import frc.robot.subsystems.DriveSubsystem;
-import frc.robot.subsystems.IntakeSubsystem;
-import frc.robot.subsystems.LiftSubsystem;
+import frc.robot.subsystems.IntakeSubsytem;
+import frc.robot.subsystems.InternalTransportSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 
-/**
- * This class is where the bulk of the robot should be declared. Since
- * Command-based is a
- * "declarative" paradigm, very little robot logic should actually be handled in
- * the {@link Robot}
- * periodic methods (other than the scheduler calls). Instead, the structure of
- * the robot (including
- * subsystems, commands, and button mappings) should be declared here.
- */
 public class RobotContainer {
 
-  private double mult = 1.0;
-
   private final DriveSubsystem driveSubsystem = new DriveSubsystem();
-  private final IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
-  private final ShooterSubsystem shooterSubsystem = new ShooterSubsystem(
-      new PIDController(ShooterConstants.kP, ShooterConstants.kI, ShooterConstants.kD));
-  private final LiftSubsystem liftSubsystem = new LiftSubsystem();
 
-  private XboxController controller = new XboxController(OIConstants.controller);
+  private final ShooterSubsystem shooterSubsystem = new ShooterSubsystem();
 
+  private final InternalTransportSubsystem feederSubsystem = new InternalTransportSubsystem();
+
+  private final IntakeSubsytem intakeSubsytem = new IntakeSubsytem();
+
+  XboxController controller = new XboxController(OIConstants.kDriverControllerPort);
+
+  private Trigger leftTrigger = new Trigger(() -> controller.getLeftTriggerAxis() > 0.3);
+  private Trigger rightTrigger = new Trigger(() -> controller.getRightTriggerAxis() > 0.3);
+
+  /**
+   * The container for the robot. Contains subsystems, OI devices, and commands.
+   */
   public RobotContainer() {
+    // Configure the button bindings
     configureButtonBindings();
-
-    driveSubsystem.setDefaultCommand(
-        new RunCommand(() -> driveSubsystem.drive(-controller.getLeftY(), controller.getRightX(), () -> mult),
-            driveSubsystem));
+    // I <3 my Lean-ona :)
+    driveSubsystem.setDefaultCommand(new RunCommand(
+        () -> driveSubsystem.drive(-controller.getLeftY(), controller.getRightX()), driveSubsystem));
   }
 
   /**
@@ -63,29 +55,26 @@ public class RobotContainer {
    * edu.wpi.first.wpilibj2.command.button.JoystickButton}.
    */
   private void configureButtonBindings() {
-    // Intake
-    new JoystickButton(controller, Button.kLeftBumper.value)
-        .whenHeld(new StartEndCommand(intakeSubsystem::outtake, intakeSubsystem::stop, intakeSubsystem));
-    new JoystickButton(controller, Button.kRightBumper.value)
-        .whenHeld(new StartEndCommand(intakeSubsystem::intake, intakeSubsystem::stop, intakeSubsystem));
-
-    // Internal Transport
-    new JoystickButton(controller, Button.kY.value)
-        .whenHeld(new StartEndCommand(shooterSubsystem::up, shooterSubsystem::stopTransport, shooterSubsystem));
-    new JoystickButton(controller, Button.kX.value)
-        .whenHeld(new StartEndCommand(shooterSubsystem::down, shooterSubsystem::stopTransport, shooterSubsystem));
-
     // Shooter
-    new JoystickButton(controller, Button.kA.value)
-        .toggleWhenPressed(new StartEndCommand(shooterSubsystem::enable, shooterSubsystem::disable, shooterSubsystem));
+    new JoystickButton(controller, Button.kA.value).whenPressed(() -> shooterSubsystem.setMax());
+    new JoystickButton(controller, Button.kB.value).whenPressed(() -> shooterSubsystem.stopShooter());
 
-    // Lift
-    new POVButton(controller, 180)
-        .toggleWhenPressed(new StartEndCommand(liftSubsystem::lift, liftSubsystem::pull, liftSubsystem));
+    // Feeder
+    leftTrigger.whenActive(() -> feederSubsystem.reverse(), feederSubsystem)
+        .whenInactive(() -> feederSubsystem.stop(), feederSubsystem);
+    rightTrigger.whenActive(() -> feederSubsystem.feed(), feederSubsystem)
+        .whenInactive(() -> feederSubsystem.stop(), feederSubsystem);
 
-    // Slow Mode
+    // Intake (not)
+    new JoystickButton(controller, Button.kLeftBumper.value)
+        .whenHeld(new StartEndCommand(() -> intakeSubsytem.outtake(), () -> intakeSubsytem.stop(), intakeSubsytem));
+    new JoystickButton(controller, Button.kRightBumper.value)
+        .whenHeld(new StartEndCommand(() -> intakeSubsytem.intake(), () -> intakeSubsytem.stop(), intakeSubsytem));
+
+    // Slowmode
     new POVButton(controller, 0)
-        .toggleWhenPressed(new StartEndCommand(() -> mult = 0.5, () -> mult = 1.0, driveSubsystem));
+        .toggleWhenPressed(
+            new StartEndCommand(() -> driveSubsystem.setMaxOutput(0.2), () -> driveSubsystem.setMaxOutput(0.8)));
   }
 
   /**
@@ -95,6 +84,6 @@ public class RobotContainer {
    */
   public Command getAutonomousCommand() {
     // An ExampleCommand will run in autonomous
-    return null;
+    return new AutoCommandTest(driveSubsystem, shooterSubsystem, feederSubsystem);
   }
 }
